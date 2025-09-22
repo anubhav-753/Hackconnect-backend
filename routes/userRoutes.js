@@ -9,7 +9,8 @@ const {
   getUsers,
   deleteUser,
   getUserById,
-  updateUser, // now correctly exists in controller
+  updateUser, 
+  getRecommendedStudents,// now correctly exists in controller
 } = require('../controllers/userController.js');
 const { protect, admin } = require('../middleware/authMiddleware.js');
 
@@ -23,6 +24,9 @@ router
   .route('/profile')
   .get(protect, getUserProfile)
   .put(protect, updateUserProfile);
+
+router
+  .route('/recommendations').get(protect, getRecommendedStudents);
 
 router
   .route('/:id')

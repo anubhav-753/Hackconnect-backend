@@ -3,55 +3,39 @@ const bcrypt = require('bcryptjs');
 
 const userSchema = mongoose.Schema(
   {
-    name: {
-      type: String,
-      required: true,
-    },
-    email: {
-      type: String,
-      required: true,
-      unique: true,
-    },
-    password: {
-      type: String,
-      required: true,
-    },
-    isAdmin: {
-      type: Boolean,
-      required: true,
-      default: false,
-    },
-    // ✅ Add these new fields
-    status: {
-      type: String,
-      default: 'Not Available',
-    },
-    bio: {
-      type: String,
-      default: '',
-    },
+    name: { type: String, required: true },
+    email: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
+    isAdmin: { type: Boolean, required: true, default: false },
+
+    status: { type: String, default: 'Not Available' },
+    bio: { type: String, default: '' },
     avatar: { type: String, default: '/uploads/default.png' },
+
+    achievements: { type: String, default: '' },  // ✅ new
+    skills: { type: [String], default: [] },      // ✅ new
+
+    socialLinks: {
+      linkedin: { type: String, default: '' },
+      github: { type: String, default: '' },
+      portfolio: { type: String, default: '' },
+    },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
-// Method to compare entered password with the hashed password
+// Compare password
 userSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };
 
-// Middleware to hash password before saving a new user
+// Hash password before save
 userSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) {
-    return next();
-  }
+  if (!this.isModified('password')) return next();
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
   next();
 });
 
 const User = mongoose.model('User', userSchema);
-
 module.exports = User;
