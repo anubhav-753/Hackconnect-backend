@@ -9,29 +9,42 @@ const {
   getUsers,
   deleteUser,
   getUserById,
-  updateUser, 
-  getRecommendedStudents,// now correctly exists in controller
-} = require('../controllers/userController.js');
-const { protect, admin } = require('../middleware/authMiddleware.js');
+  updateUser,
+  getRecommendedStudents,
+  sendConnectionRequest,
+  getIncomingRequests,
+  acceptRequest,
+  rejectRequest,
+} = require('../controllers/userController');
+const { protect, admin } = require('../middleware/authMiddleware');
 
-router.route('/register').post(registerUser);
-router.route('/').get(protect, admin, getUsers);
+// ---------------- AUTH ---------------- //
+router.post('/register', registerUser);          // Register a user
+router.post('/login', authUser);                 // Login user
+router.post('/logout', logoutUser);              // Logout user
 
-router.post('/logout', logoutUser);
-router.post('/login', authUser);
-
+// ---------------- PROFILE ---------------- //
 router
   .route('/profile')
-  .get(protect, getUserProfile)
-  .put(protect, updateUserProfile);
+  .get(protect, getUserProfile)                  // Get logged-in user's profile
+  .put(protect, updateUserProfile);              // Update logged-in user's profile
 
-router
-  .route('/recommendations').get(protect, getRecommendedStudents);
+// ---------------- RECOMMENDATIONS & CONNECTION REQUESTS ---------------- //
+// ⚠️ Must come BEFORE `/:id` dynamic route
+router.get('/recommendations', protect, getRecommendedStudents);       // Get recommended students
+router.post('/:id/request', protect, sendConnectionRequest);           // Send connection request
+router.get('/requests', protect, getIncomingRequests);                 // Get incoming requests
+router.post('/requests/:id/accept', protect, acceptRequest);           // Accept connection request
+router.post('/requests/:id/reject', protect, rejectRequest);           // Reject connection request
 
-router
-  .route('/:id')
-  .delete(protect, admin, deleteUser)
-  .get(protect, admin, getUserById)
-  .put(protect, admin, updateUser);
+// ---------------- ADMIN ONLY ---------------- //
+// Keep these at the bottom so they don’t catch /recommendations accidentally
+router.route('/')
+  .get(protect, admin, getUsers);                // Admin: get all users
+
+router.route('/:id')
+  .delete(protect, admin, deleteUser)            // Admin: delete user by ID
+  .get(protect, admin, getUserById)              // Admin: get user by ID
+  .put(protect, admin, updateUser);              // Admin: update user by ID
 
 module.exports = router;

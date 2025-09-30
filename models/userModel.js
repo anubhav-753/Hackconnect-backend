@@ -12,14 +12,20 @@ const userSchema = mongoose.Schema(
     bio: { type: String, default: '' },
     avatar: { type: String, default: '/uploads/default.png' },
 
-    achievements: { type: String, default: '' },  // ✅ new
-    skills: { type: [String], default: [] },      // ✅ new
+    achievements: { type: String, default: '' },
+    skills: { type: [String], default: [] },
+    college: { type: String, default: '' },
+    state: { type: String, default: '' },
+    branch: { type: String, default: '' },
 
     socialLinks: {
       linkedin: { type: String, default: '' },
       github: { type: String, default: '' },
       portfolio: { type: String, default: '' },
     },
+
+    requests: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }], // incoming requests
+    friends: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],  // accepted requests
   },
   { timestamps: true }
 );
