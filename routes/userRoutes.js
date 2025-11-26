@@ -1,4 +1,4 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
 const {
   authUser,
@@ -9,42 +9,46 @@ const {
   getUsers,
   deleteUser,
   getUserById,
+  getPublicUserById,        // ✅ import new public controller
   updateUser,
   getRecommendedStudents,
   sendConnectionRequest,
   getIncomingRequests,
   acceptRequest,
   rejectRequest,
-} = require('../controllers/userController');
-const { protect, admin } = require('../middleware/authMiddleware');
+} = require("../controllers/userController");
+const { protect, admin } = require("../middleware/authMiddleware");
 
 // ---------------- AUTH ---------------- //
-router.post('/register', registerUser);          // Register a user
-router.post('/login', authUser);                 // Login user
-router.post('/logout', logoutUser);              // Logout user
+router.post("/register", registerUser);
+router.post("/login", authUser);
+router.post("/logout", logoutUser);
 
 // ---------------- PROFILE ---------------- //
 router
-  .route('/profile')
-  .get(protect, getUserProfile)                  // Get logged-in user's profile
-  .put(protect, updateUserProfile);              // Update logged-in user's profile
+  .route("/profile")
+  .get(protect, getUserProfile)
+  .put(protect, updateUserProfile);
 
 // ---------------- RECOMMENDATIONS & CONNECTION REQUESTS ---------------- //
-// ⚠️ Must come BEFORE `/:id` dynamic route
-router.get('/recommendations', protect, getRecommendedStudents);       // Get recommended students
-router.post('/:id/request', protect, sendConnectionRequest);           // Send connection request
-router.get('/requests', protect, getIncomingRequests);                 // Get incoming requests
-router.post('/requests/:id/accept', protect, acceptRequest);           // Accept connection request
-router.post('/requests/:id/reject', protect, rejectRequest);           // Reject connection request
+router.get("/recommendations", protect, getRecommendedStudents);
+router.post("/:id/request", protect, sendConnectionRequest);
+router.get("/requests", protect, getIncomingRequests);
+router.post("/requests/:id/accept", protect, acceptRequest);
+router.post("/requests/:id/reject", protect, rejectRequest);
+
+// ---------------- PUBLIC PROFILE (NEW) ---------------- //
+router.get("/public/:id", getPublicUserById);  // ✅ anyone can view profiles
 
 // ---------------- ADMIN ONLY ---------------- //
-// Keep these at the bottom so they don’t catch /recommendations accidentally
-router.route('/')
-  .get(protect, admin, getUsers);                // Admin: get all users
+router
+  .route("/")
+  .get(protect, admin, getUsers);
 
-router.route('/:id')
-  .delete(protect, admin, deleteUser)            // Admin: delete user by ID
-  .get(protect, admin, getUserById)              // Admin: get user by ID
-  .put(protect, admin, updateUser);              // Admin: update user by ID
+router
+  .route("/:id")
+  .delete(protect, admin, deleteUser)
+  .get(protect, admin, getUserById)
+  .put(protect, admin, updateUser);
 
 module.exports = router;
