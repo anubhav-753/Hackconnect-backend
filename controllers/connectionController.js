@@ -10,14 +10,18 @@ const Notification = require("../models/notificationModel");
 const sendConnectionRequest = asyncHandler(async (req, res) => {
   const targetId = req.params.id;
 
+  // Prevent self‑request
   if (String(targetId) === String(req.user._id)) {
     res.status(400);
     throw new Error("You can't send a request to yourself");
   }
 
+  // Prevent duplicate connections (in either direction)
   const existing = await Connection.findOne({
-    from: req.user._id,
-    to: targetId,
+    $or: [
+      { from: req.user._id, to: targetId },
+      { from: targetId, to: req.user._id },
+    ],
   });
 
   if (existing) {
@@ -25,13 +29,14 @@ const sendConnectionRequest = asyncHandler(async (req, res) => {
     throw new Error("Request already sent or connection already exists");
   }
 
+  // Create connection record
   const connection = await Connection.create({
     from: req.user._id,
     to: targetId,
     status: "pending",
   });
 
-  // Create notification for recipient
+  // ✅ Create notification for the recipient
   await Notification.create({
     recipient: targetId,
     sender: req.user._id,
@@ -40,6 +45,7 @@ const sendConnectionRequest = asyncHandler(async (req, res) => {
   });
 
   res.status(201).json({
+    success: true,
     message: "Request sent successfully",
     connection,
   });
@@ -67,15 +73,16 @@ const acceptConnectionRequest = asyncHandler(async (req, res) => {
   connection.status = "accepted";
   await connection.save();
 
-  // Notify sender of acceptance
+  // ✅ Notify the original sender that the request was accepted
   await Notification.create({
     recipient: requesterId,
     sender: req.user._id,
     type: "request-accepted",
-    message: `${req.user.name} accepted your request. You are now friends!`,
+    message: `${req.user.name} accepted your follow request. You are now friends!`,
   });
 
   res.json({
+    success: true,
     message: "Connection accepted successfully",
     connection,
   });
@@ -103,16 +110,21 @@ const rejectConnectionRequest = asyncHandler(async (req, res) => {
   connection.status = "rejected";
   await connection.save();
 
-  res.json({ message: "Request rejected", connection });
+  res.json({
+    success: true,
+    message: "Request rejected",
+    connection,
+  });
 });
 
 /**
- * @desc    Get current user's connections list
+ * @desc    Get current user's accepted connections
  * @route   GET /api/connections
  * @access  Private
  */
 const getConnections = asyncHandler(async (req, res) => {
   const myId = req.user._id;
+
   const connections = await Connection.find({
     $or: [{ from: myId }, { to: myId }],
     status: "accepted",
@@ -121,7 +133,7 @@ const getConnections = asyncHandler(async (req, res) => {
     .populate("to", "name avatar email")
     .sort({ updatedAt: -1 });
 
-  res.json(connections);
+  res.json({ success: true, connections });
 });
 
 module.exports = {
