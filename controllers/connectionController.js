@@ -1,139 +1,178 @@
 const asyncHandler = require("express-async-handler");
 const Connection = require("../models/connectionModel");
 const Notification = require("../models/notificationModel");
+const User = require("../models/userModel");
 
 /**
- * @desc    Send a connection / follow request
- * @route   POST /api/connections/:id
- * @access  Private
+ * @desc Send a connection request and notify recipient
+ * @route POST /api/connections/request
  */
 const sendConnectionRequest = asyncHandler(async (req, res) => {
-  const targetId = req.params.id;
+  const { recipientId } = req.body;
+  const senderId = req.user._id;
 
-  // Prevent self‑request
-  if (String(targetId) === String(req.user._id)) {
+  if (!recipientId) {
     res.status(400);
-    throw new Error("You can't send a request to yourself");
+    throw new Error("recipientId is required");
   }
 
-  // Prevent duplicate connections (in either direction)
-  const existing = await Connection.findOne({
+  if (senderId.toString() === recipientId) {
+    res.status(400);
+    throw new Error("You cannot send a request to yourself");
+  }
+
+  // Check if connection already exists
+  const existingConnection = await Connection.findOne({
     $or: [
-      { from: req.user._id, to: targetId },
-      { from: targetId, to: req.user._id },
+      { sender: senderId, recipient: recipientId },
+      { sender: recipientId, recipient: senderId },
     ],
   });
 
-  if (existing) {
+  if (existingConnection) {
     res.status(400);
-    throw new Error("Request already sent or connection already exists");
+    throw new Error(
+      "Connection request already exists or you are already connected"
+    );
   }
 
-  // Create connection record
+  // Create the connection record
   const connection = await Connection.create({
-    from: req.user._id,
-    to: targetId,
+    sender: senderId,
+    recipient: recipientId,
     status: "pending",
   });
 
-  // ✅ Create notification for the recipient
-  await Notification.create({
-    recipient: targetId,
-    sender: req.user._id,
-    type: "request-sent",
-    message: `${req.user.name} sent you a follow request.`,
+  // Create database notification
+  const notification = await Notification.create({
+    recipient: recipientId,
+    sender: senderId,
+    type: "connection_request",
+    message: `${req.user.name} sent you a friend request.`,
   });
 
+  // Trigger real-time Socket.IO notification (if socketio is configured)
+  const io = req.app.get("socketio");
+  if (io) {
+    io.to(recipientId.toString()).emit("newNotification", {
+      _id: notification._id,
+      type: "connection_request",
+      message: notification.message,
+      senderName: req.user.name,
+      createdAt: notification.createdAt,
+    });
+  }
+
   res.status(201).json({
-    success: true,
-    message: "Request sent successfully",
+    message: "Connection request sent successfully",
     connection,
   });
 });
 
 /**
- * @desc    Accept connection request
- * @route   PUT /api/connections/:id/accept
- * @access  Private
+ * @desc Accept a connection request
+ * @route PUT /api/connections/:id/accept
  */
 const acceptConnectionRequest = asyncHandler(async (req, res) => {
-  const requesterId = req.params.id;
+  const connection = await Connection.findById(req.params.id);
 
-  const connection = await Connection.findOne({
-    from: requesterId,
-    to: req.user._id,
-    status: "pending",
-  });
-
-  if (!connection) {
+  if (
+    !connection ||
+    connection.recipient.toString() !== req.user._id.toString()
+  ) {
     res.status(404);
-    throw new Error("No pending request found");
+    throw new Error("Request not found or unauthorized");
   }
 
   connection.status = "accepted";
   await connection.save();
 
-  // ✅ Notify the original sender that the request was accepted
-  await Notification.create({
-    recipient: requesterId,
+  // Notify the sender that the request was accepted
+  const io = req.app.get("socketio");
+  const notification = await Notification.create({
+    recipient: connection.sender,
     sender: req.user._id,
-    type: "request-accepted",
-    message: `${req.user.name} accepted your follow request. You are now friends!`,
+    type: "connection_accepted",
+    message: `${req.user.name} accepted your friend request.`,
   });
 
-  res.json({
-    success: true,
-    message: "Connection accepted successfully",
-    connection,
-  });
+  if (io) {
+    io.to(connection.sender.toString()).emit("newNotification", {
+      type: "connection_accepted",
+      message: notification.message,
+    });
+  }
+
+  res.json({ message: "Connection request accepted" });
 });
 
 /**
- * @desc    Reject connection request
- * @route   PUT /api/connections/:id/reject
- * @access  Private
+ * @desc Reject a connection request
+ * @route PUT /api/connections/:id/reject
  */
 const rejectConnectionRequest = asyncHandler(async (req, res) => {
-  const requesterId = req.params.id;
+  const connection = await Connection.findById(req.params.id);
 
-  const connection = await Connection.findOne({
-    from: requesterId,
-    to: req.user._id,
-    status: "pending",
-  });
-
-  if (!connection) {
+  if (
+    !connection ||
+    connection.recipient.toString() !== req.user._id.toString()
+  ) {
     res.status(404);
-    throw new Error("No pending request found");
+    throw new Error("Request not found or unauthorized");
   }
 
   connection.status = "rejected";
   await connection.save();
 
-  res.json({
-    success: true,
-    message: "Request rejected",
-    connection,
+  // Notify the sender that the request was rejected
+  const io = req.app.get("socketio");
+  const notification = await Notification.create({
+    recipient: connection.sender,
+    sender: req.user._id,
+    type: "connection_rejected",
+    message: `${req.user.name} rejected your friend request.`,
   });
+
+  if (io) {
+    io.to(connection.sender.toString()).emit("newNotification", {
+      type: "connection_rejected",
+      message: notification.message,
+    });
+  }
+
+  res.json({ message: "Connection request rejected" });
 });
 
 /**
- * @desc    Get current user's accepted connections
- * @route   GET /api/connections
- * @access  Private
+ * @desc Get all accepted connections for the logged in user
+ * @route GET /api/connections
  */
 const getConnections = asyncHandler(async (req, res) => {
-  const myId = req.user._id;
+  const userId = req.user._id;
 
+  // Find all accepted connections where the current user is either sender or recipient
   const connections = await Connection.find({
-    $or: [{ from: myId }, { to: myId }],
     status: "accepted",
+    $or: [{ sender: userId }, { recipient: userId }],
   })
-    .populate("from", "name avatar email")
-    .populate("to", "name avatar email")
-    .sort({ updatedAt: -1 });
+    .populate("sender", "name email avatar")
+    .populate("recipient", "name email avatar");
 
-  res.json({ success: true, connections });
+  // Optionally map to "other user" for convenience
+  const formatted = connections.map((conn) => {
+    const isSender = conn.sender._id.toString() === userId.toString();
+    const otherUser = isSender ? conn.recipient : conn.sender;
+
+    return {
+      _id: conn._id,
+      user: otherUser,
+      status: conn.status,
+      createdAt: conn.createdAt,
+      updatedAt: conn.updatedAt,
+    };
+  });
+
+  res.json(formatted);
 });
 
 module.exports = {

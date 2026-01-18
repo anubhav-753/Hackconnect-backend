@@ -1,3 +1,4 @@
+// controllers/notificationController.js
 const asyncHandler = require("express-async-handler");
 const Notification = require("../models/notificationModel");
 
@@ -20,7 +21,10 @@ const getUserNotifications = asyncHandler(async (req, res) => {
  * @access  Private
  */
 const markAsRead = asyncHandler(async (req, res) => {
-  await Notification.updateMany({ recipient: req.user._id }, { $set: { read: true } });
+  await Notification.updateMany(
+    { recipient: req.user._id },
+    { $set: { isRead: true } } // ✅ correct field
+  );
   res.json({ message: "Notifications marked as read" });
 });
 

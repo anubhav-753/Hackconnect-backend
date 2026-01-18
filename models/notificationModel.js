@@ -1,6 +1,7 @@
+// models/notificationModel.js
 const mongoose = require("mongoose");
 
-const notificationSchema = new mongoose.Schema(
+const notificationSchema = mongoose.Schema(
   {
     recipient: {
       type: mongoose.Schema.Types.ObjectId,
@@ -14,23 +15,19 @@ const notificationSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ["request-sent", "request-accepted", "hackathon-update", "general"],
-      default: "general",
-    },
-    message: {
-      type: String,
+      enum: [
+        "connection_request",
+        "connection_accepted",
+        "connection_rejected", // ✅ added
+        "hackathon_alert",
+      ],
       required: true,
-      trim: true,
     },
-    read: {
-      type: Boolean,
-      default: false,
-    },
+    message: { type: String, required: true },
+    isRead: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
 
-// Index for faster lookup per recipient
-notificationSchema.index({ recipient: 1, createdAt: -1 });
-
-module.exports = mongoose.model("Notification", notificationSchema);
+const Notification = mongoose.model("Notification", notificationSchema);
+module.exports = Notification;

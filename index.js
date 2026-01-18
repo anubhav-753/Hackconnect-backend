@@ -1,79 +1,62 @@
-// ---------------------------------------------------------
-// Import required packages
-// ---------------------------------------------------------
 const express = require("express");
 const dotenv = require("dotenv");
 const cors = require("cors");
-const path = require("path");
-const connectDB = require("./config/db.js");
-const { notFound, errorHandler } = require("./middleware/errorMiddleware.js");
+const http = require("http");
+const { Server } = require("socket.io");
+const connectDB = require("./config/db");
+const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 
-// ---------------------------------------------------------
-// Load environment variables
-// ---------------------------------------------------------
+// Route imports
+const userRoutes = require("./routes/userRoutes");
+const connectionRoutes = require("./routes/connectionRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
+const hackathonRoutes = require("./routes/hackathonRoutes");
+
 dotenv.config();
-
-// ---------------------------------------------------------
-// Connect to MongoDB
-// ---------------------------------------------------------
 connectDB();
 
-// ---------------------------------------------------------
-// Import route files
-// ---------------------------------------------------------
-const userRoutes = require("./routes/userRoutes.js");
-const hackathonRoutes = require("./routes/hackathonRoutes.js");
-const connectionRoutes = require("./routes/connectionRoutes.js");     // ✅ new
-const notificationRoutes = require("./routes/notificationRoutes.js"); // ✅ new
-
-// ---------------------------------------------------------
-// Create Express app
-// ---------------------------------------------------------
 const app = express();
+const server = http.createServer(app);
 
-// ---------------------------------------------------------
-// Middleware
-// ---------------------------------------------------------
-app.use(cors());
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ limit: "10mb", extended: true }));
-
-
-app.get("/", (req, res) => {
-  res.send("API is running...");
+// Initialize Socket.io with CORS
+const io = new Server(server, {
+  cors: {
+    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    methods: ["GET", "POST"],
+  },
 });
 
+// Make io accessible in controllers
+app.set("socketio", io);
+
+app.use(cors());
+app.use(express.json());
+
+// API Routes
 app.use("/api/users", userRoutes);
+app.use("/api/connections", connectionRoutes);
+app.use("/api/notifications", notificationRoutes);
 app.use("/api/hackathons", hackathonRoutes);
-app.use("/api/connections", connectionRoutes);      // ✅ integrate connections
-app.use("/api/notifications", notificationRoutes);  // ✅ integrate notifications
 
-// ---------------------------------------------------------
-// Serve React build & handle SPA routing in production
-// ---------------------------------------------------------
-if (process.env.NODE_ENV === "production") {
-  const __dirnameDir = path.resolve();
-  app.use(express.static(path.join(__dirnameDir, "build")));
+// Socket.io Connection Logic
+io.on("connection", (socket) => {
+  console.log("A user connected:", socket.id);
 
-  // For any non‑API route, serve index.html for React Router
-  app.get("*", (req, res) =>
-    res.sendFile(path.join(__dirnameDir, "build", "index.html"))
-  );
-}
+  // Users should emit 'join' with their userId after logging in on frontend
+  socket.on("join", (userId) => {
+    if (userId) {
+      socket.join(userId);
+      console.log(`User ${userId} joined their private room.`);
+    }
+  });
 
-// ---------------------------------------------------------
-// Error handling middleware
-// ---------------------------------------------------------
+  socket.on("disconnect", () => {
+    console.log("User disconnected");
+  });
+});
+
 app.use(notFound);
 app.use(errorHandler);
 
-// ---------------------------------------------------------
-// Start the server
-// ---------------------------------------------------------
 const PORT = process.env.PORT || 5000;
-
-app.listen(PORT, () => {
-  console.log(
-    `Server running in ${process.env.NODE_ENV || "development"} mode on port ${PORT}`
-  );
-});
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));

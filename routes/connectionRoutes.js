@@ -11,9 +11,15 @@ const {
 // Get all accepted connections for logged in user
 router.get("/", protect, getConnections);
 
-// Send, accept, reject requests
-router.post("/:id", protect, sendConnectionRequest);
+// Send a connection request
+// POST /api/connections/request
+router.post("/request", protect, sendConnectionRequest);
+
+// Accept / reject requests (by connection id)
+// PUT /api/connections/:id/accept
 router.put("/:id/accept", protect, acceptConnectionRequest);
+
+// PUT /api/connections/:id/reject
 router.put("/:id/reject", protect, rejectConnectionRequest);
 
 module.exports = router;
