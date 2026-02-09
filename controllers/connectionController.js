@@ -98,8 +98,15 @@ const acceptConnectionRequest = asyncHandler(async (req, res) => {
 
   if (io) {
     io.to(connection.sender.toString()).emit("newNotification", {
+      _id: notification._id,
       type: "connection_accepted",
       message: notification.message,
+      sender: {
+        _id: req.user._id,
+        name: req.user.name,
+        avatar: req.user.avatar,
+      },
+      createdAt: notification.createdAt,
     });
   }
 
@@ -135,8 +142,15 @@ const rejectConnectionRequest = asyncHandler(async (req, res) => {
 
   if (io) {
     io.to(connection.sender.toString()).emit("newNotification", {
+      _id: notification._id,
       type: "connection_rejected",
       message: notification.message,
+      sender: {
+        _id: req.user._id,
+        name: req.user.name,
+        avatar: req.user.avatar,
+      },
+      createdAt: notification.createdAt,
     });
   }
 

@@ -11,6 +11,8 @@ const userRoutes = require("./routes/userRoutes");
 const connectionRoutes = require("./routes/connectionRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const hackathonRoutes = require("./routes/hackathonRoutes");
+const chatRoutes = require("./routes/chatRoutes");
+const messageRoutes = require("./routes/messageRoutes");
 
 dotenv.config();
 connectDB();
@@ -20,6 +22,7 @@ const server = http.createServer(app);
 
 // Initialize Socket.io with CORS
 const io = new Server(server, {
+  pingTimeout: 60000,
   cors: {
     origin: process.env.FRONTEND_URL || "http://localhost:3000",
     methods: ["GET", "POST"],
@@ -37,12 +40,44 @@ app.use("/api/users", userRoutes);
 app.use("/api/connections", connectionRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/hackathons", hackathonRoutes);
+app.use("/api/chats", chatRoutes);
+app.use("/api/messages", messageRoutes);
 
 // Socket.io Connection Logic
 io.on("connection", (socket) => {
-  console.log("A user connected:", socket.id);
+  console.log("Connected to socket.io");
 
-  // Users should emit 'join' with their userId after logging in on frontend
+  // Setup: User joins their own room
+  socket.on("setup", (userData) => {
+    socket.join(userData._id);
+    console.log(`User ${userData._id} connected`);
+    socket.emit("connected");
+  });
+
+  // Join a specific chat room
+  socket.on("join chat", (room) => {
+    socket.join(room);
+    console.log("User joined Room: " + room);
+  });
+
+  // Typing indicators
+  socket.on("typing", (room) => socket.in(room).emit("typing"));
+  socket.on("stop typing", (room) => socket.in(room).emit("stop typing"));
+
+  // New Message
+  socket.on("new message", (newMessageRecieved) => {
+    var chat = newMessageRecieved.chat;
+
+    if (!chat.users) return console.log("chat.users not defined");
+
+    chat.users.forEach((user) => {
+      if (user._id == newMessageRecieved.sender._id) return;
+
+      socket.in(user._id).emit("message received", newMessageRecieved);
+    });
+  });
+
+  // Basic join for notifications (backward compatibility)
   socket.on("join", (userId) => {
     if (userId) {
       socket.join(userId);

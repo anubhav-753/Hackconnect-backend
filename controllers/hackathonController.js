@@ -1,20 +1,36 @@
 const asyncHandler = require('express-async-handler');
 const Hackathon = require('../models/hackathonModel');
+const Notification = require('../models/notificationModel');
+const User = require('../models/userModel');
 
 // @desc    Get all hackathons with search and sorting
 // @route   GET /api/hackathons
 // @access  Public
-const getAllHackathons = asyncHandler(async (req, res) => { // <-- RENAMED THIS FUNCTION
+// @desc    Get all hackathons with search, sorting, and status filtering
+// @route   GET /api/hackathons
+// @access  Public
+const getAllHackathons = asyncHandler(async (req, res) => {
   const keyword = req.query.search
     ? {
-        $or: [
-          { title: { $regex: req.query.search, $options: 'i' } },
-          { description: { $regex: req.query.search, $options: 'i' } },
-        ],
-      }
+      $or: [
+        { title: { $regex: req.query.search, $options: 'i' } },
+        { description: { $regex: req.query.search, $options: 'i' } },
+      ],
+    }
     : {};
 
-  const hackathons = await Hackathon.find({ ...keyword }).sort({ startDate: 'asc' });
+  let dateFilter = {};
+  const now = new Date();
+
+  if (req.query.status === 'upcoming') {
+    dateFilter = { startDate: { $gt: now } };
+  } else if (req.query.status === 'ongoing') {
+    dateFilter = { startDate: { $lte: now }, endDate: { $gte: now } };
+  } else if (req.query.status === 'completed' || req.query.status === 'past') {
+    dateFilter = { endDate: { $lt: now } };
+  }
+
+  const hackathons = await Hackathon.find({ ...keyword, ...dateFilter }).sort({ startDate: 'asc' });
   res.json(hackathons);
 });
 
@@ -53,6 +69,30 @@ const createHackathon = asyncHandler(async (req, res) => {
     themes,
     createdBy: req.user._id,
   });
+
+  // Notify all users about the new hackathon
+  const users = await User.find({}, '_id');
+  const notifications = users.map(user => ({
+    recipient: user._id,
+    sender: req.user._id, // The admin/creator
+    type: 'hackathon_alert',
+    message: `New Hackathon Alert: ${hackathon.title}`,
+    isRead: false,
+  }));
+
+  if (notifications.length > 0) {
+    await Notification.insertMany(notifications);
+  }
+
+  // Real-time notification
+  const io = req.app.get('socketio');
+  if (io) {
+    io.emit('newNotification', {
+      type: 'hackathon_alert',
+      message: `New Hackathon Alert: ${hackathon.title}`,
+      hackathonId: hackathon._id,
+    });
+  }
 
   res.status(201).json(hackathon);
 });

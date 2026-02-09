@@ -1,6 +1,7 @@
 const asyncHandler = require("express-async-handler");
 const mongoose = require("mongoose");
 const User = require("../models/userModel");
+const Notification = require("../models/notificationModel");
 const generateToken = require("../utils/generatetoken");
 
 // ------------------------------------------------------------
@@ -121,14 +122,14 @@ const updateUserProfile = asyncHandler(async (req, res) => {
   user.branch = req.body.branch ? req.body.branch.trim() : user.branch;
 
   if (Array.isArray(req.body.skills)) {
-    user.skills = req.body.skills.map((s) => s.trim());
+    user.skills = req.body.skills.filter(s => typeof s === 'string').map((s) => s.trim());
   }
 
   if (req.body.socialLinks) {
     user.socialLinks = {
-      linkedin: req.body.socialLinks.linkedin || user.socialLinks.linkedin,
-      github: req.body.socialLinks.github || user.socialLinks.github,
-      portfolio: req.body.socialLinks.portfolio || user.socialLinks.portfolio,
+      linkedin: req.body.socialLinks.linkedin || (user.socialLinks && user.socialLinks.linkedin) || "",
+      github: req.body.socialLinks.github || (user.socialLinks && user.socialLinks.github) || "",
+      portfolio: req.body.socialLinks.portfolio || (user.socialLinks && user.socialLinks.portfolio) || "",
     };
   }
 
@@ -141,12 +142,23 @@ const updateUserProfile = asyncHandler(async (req, res) => {
 });
 
 // ------------------------------------------------------------
-// @desc    Get all users (Admin)
-// @route   GET /api/users
-// @access  Private/Admin
+// @desc    Get all users / Search users
+// @route   GET /api/users?search=
+// @access  Protected
 // ------------------------------------------------------------
 const getUsers = asyncHandler(async (req, res) => {
-  const users = await User.find({});
+  const keyword = req.query.search
+    ? {
+      $or: [
+        { name: { $regex: req.query.search, $options: "i" } },
+        { email: { $regex: req.query.search, $options: "i" } },
+      ],
+    }
+    : {};
+
+  const users = await User.find(keyword)
+    .find({ _id: { $ne: req.user._id } })
+    .select("-password");
   res.json(users);
 });
 
@@ -284,6 +296,27 @@ const sendConnectionRequest = asyncHandler(async (req, res) => {
 
   targetUser.requests.push(req.user._id);
   await targetUser.save();
+
+  // Create Notification
+  const notification = await Notification.create({
+    recipient: targetUser._id,
+    sender: req.user._id,
+    type: "connection_request",
+    message: `${req.user.name} sent you a friend request.`,
+  });
+
+  // Socket.IO
+  const io = req.app.get("socketio");
+  if (io) {
+    io.to(targetUser._id.toString()).emit("newNotification", {
+      _id: notification._id,
+      type: "connection_request",
+      message: notification.message,
+      senderName: req.user.name,
+      createdAt: notification.createdAt,
+    });
+  }
+
   res.json({ message: "Request sent successfully" });
 });
 
@@ -323,6 +356,30 @@ const acceptRequest = asyncHandler(async (req, res) => {
   await requester.save();
 
   res.json({ message: "Request accepted" });
+
+  // Create Notification for the requester
+  const notification = await Notification.create({
+    recipient: requesterId,
+    sender: req.user._id, // Acceptor is the sender of this notification
+    type: "connection_accepted",
+    message: `${req.user.name} accepted your friend request.`,
+  });
+
+  // Socket.IO
+  const io = req.app.get("socketio");
+  if (io) {
+    io.to(requesterId.toString()).emit("newNotification", {
+      _id: notification._id,
+      type: "connection_accepted",
+      message: notification.message,
+      sender: {
+        _id: req.user._id,
+        name: req.user.name,
+        avatar: req.user.avatar,
+      },
+      createdAt: notification.createdAt,
+    });
+  }
 });
 
 // ------------------------------------------------------------
@@ -341,6 +398,31 @@ const rejectRequest = asyncHandler(async (req, res) => {
 
   user.requests = user.requests.filter((r) => String(r) !== String(requesterId));
   await user.save();
+
+  // Create Notification for the requester
+  const notification = await Notification.create({
+    recipient: requesterId,
+    sender: req.user._id,
+    type: "connection_rejected",
+    message: `${req.user.name} rejected your friend request.`,
+  });
+
+  // Socket.IO
+  const io = req.app.get("socketio");
+  if (io) {
+    io.to(requesterId.toString()).emit("newNotification", {
+      _id: notification._id,
+      type: "connection_rejected",
+      message: notification.message,
+      sender: {
+        _id: req.user._id,
+        name: req.user.name,
+        avatar: req.user.avatar,
+      },
+      createdAt: notification.createdAt,
+    });
+  }
+
   res.json({ message: "Request rejected" });
 });
 

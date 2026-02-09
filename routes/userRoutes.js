@@ -43,7 +43,7 @@ router.get("/public/:id", getPublicUserById);  // ✅ anyone can view profiles
 // ---------------- ADMIN ONLY ---------------- //
 router
   .route("/")
-  .get(protect, admin, getUsers);
+  .get(protect, getUsers);
 
 router
   .route("/:id")
